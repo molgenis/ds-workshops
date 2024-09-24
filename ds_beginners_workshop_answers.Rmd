@@ -1,0 +1,83 @@
+## Calculate the mean values for BMI and blood glucose levels
+
+Using base DataSHIELD we can do:
+```{r}
+ds.mean("data$LAB_GLUC_ADJUSTED")
+ds.mean("data$PM_BMI_CONTINUOUS")
+```
+
+Or using dsHelper:
+```{r}
+stats <- dh.getStats(
+  df = "data",
+  vars = c("LAB_GLUC_ADJUSTED", "PM_BMI_CONTINUOUS")
+)
+
+stats
+````
+## Make a scatter plot for the same two variables
+```{r}
+ds.scatterPlot(x = "data$LAB_GLUC_ADJUSTED", y = "data$PM_BMI_CONTINUOUS")
+```
+## Run a two-stage meta-analysis to see if these variables are associated
+```{r}
+two_stage_out <- ds.glmSLMA(
+  formula = "data$PM_BMI_CONTINUOUS ~ data$LAB_GLUC_ADJUSTED",
+  family = "gaussian",
+  newobj = "workshop.obj")
+```
+```{r}
+meta_out <- ds.glmSLMA(
+  formula = "data$PM_BMI_CONTINUOUS ~ data$LAB_GLUC_ADJUSTED",
+  family = "gaussian",
+  newobj = "practical")
+```
+
+What are the coefficients for `LAB_GLUC_ADJUSTED` for each cohort?
+```{r}
+two_stage_out$betamatrix.valid
+```
+
+## Plot the findings from your meta-analysis in a forest plot.
+```{r}
+ds.forestplot(
+  mod = two_stage_out,
+  variable = "data$LAB_GLUC_ADJUSTED"
+)
+```
+
+## Bonus 1: Make a scatter plot showing the residuals of your model
+
+```{r}
+ds.glmPredict(glmname = "practical", newobj = "practical.prediction")
+ds.cbind(c('data$PM_BMI_CONTINUOUS', 'data$LAB_GLUC_ADJUSTED'), newobj='practical_vars')
+ds.completeCases('practical_vars', newobj='practical_vars.complete')
+
+glmslma <- ds.glmSLMA(
+  formula = "practical_vars.complete$PM_BMI_CONTINUOUS ~ practical_vars.complete$LAB_GLUC_ADJUSTED",
+  family = "gaussian",
+  newobj = "practical.obj")
+
+ds.make(
+  toAssign = paste0(
+    "(", glmslma$SLMA.pooled.ests.matrix[1,1],")+(",
+    glmslma$SLMA.pooled.ests.matrix[2,1], "*practical_vars.complete$LAB_GLUC_ADJUSTED)"),
+  newobj = "practical_predicted")
+
+ds.make(
+  toAssign = "practical_vars.complete$PM_BMI_CONTINUOUS - practical_predicted",
+  newobj = "residuals")
+
+ds.scatterPlot('practical_predicted', "residuals")
+```
+## Bonus 2: Make a forest plot using a different theme
+```{r}
+?ds.forestplot
+?meta::metagen
+?meta::meta
+
+ds.forestplot(
+  mod = two_stage_out,
+  variable = "data$LAB_GLUC_ADJUSTED",
+  layout = "RevMan5")
+```

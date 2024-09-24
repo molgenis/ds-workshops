@@ -1,0 +1,527 @@
+---
+title: "DataSHIELD Beginners Workshop, Tuesday 24th October 2024"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+# DataSHIELD Beginners Workshop, Tuesday 24th October 2024
+
+The plan for this workshop is as follows:
+
+## Part 1: learning
+- Brief recap on principles of DataSHIELD
+- Loading packages
+- How to log in and assign data
+- Describing data (aggregate-type functions)
+- Manipulating data (assign-type functions)
+- Making graphs
+- Performing regression analysis
+- Saving and loading workspaces
+
+## Part 2: practical
+
+To demonstrate this, we will use the three simulated datasets based on a model derived 
+from the participants of the 1958 Birth Cohort, as part of the obesity methodological development project. 
+
+# Part 1: learning
+## Brief recap on principles of DataSHIELD
+
+## Information on RMarkdown files
+  
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you 
+execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the green arrow on the top right of the chunk or by 
+placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+## Loading packages
+To run DataSHIELD you need a set of packages installed on the server you will connect to, and in 
+your local R environment. The installation of the serverside packages is managed by the data owner.
+
+We need to install one local package. When prompted type '3'
+```{r}
+library(remotes)
+# install.packages("DSI")
+# install_github("datashield/dsBaseClient")
+# install_github("timcadman/ds-helper")
+install_github("molgenis/dsTidyverseClient")
+```
+
+And load all the required libraries:
+```{r}
+library(DSI)
+library(dsBaseClient)
+library(dsHelper)
+library(DSMolgenisArmadillo)
+library(dsTidyverseClient)
+```
+
+## How to log in and assign data
+For practical reasons, the data for this workshop is hosted on one server. However, for illustrative
+purposes we will imagine that each study is hosted by a different institution: the first by UMCG 
+Groningen, the second by Liverpool University and the third by ISGlobal, Barcelona. 
+
+To login within DataSHIELD, first you need to create an R object which holds all of the login 
+information. The first step is to request a token. Run the block of code below and a page will
+open in your browser. Click `submit` and then in the next page enter your login details in the
+`username` and `password` boxes.
+
+```{r}
+url <- "https://armadillo-demo.molgenis.net/"
+token <- armadillo.get_token(url)
+```
+
+Now we create an object containing the token and other required login details:
+```{r}
+builder <- DSI::newDSLoginBuilder()
+builder$append(server = "Groningen", url = url, token = token, table = "ds-workshop-24/data/CNSIM1", driver = "ArmadilloDriver", profile = "workshop")
+builder$append(server = "Liverpool", url = url, token = token, table = "ds-workshop-24/data/CNSIM2", driver = "ArmadilloDriver", profile = "workshop")
+builder$append(server = "Barcelona", url = url, token = token, table = "ds-workshop-24/data/CNSIM3", driver = "ArmadilloDriver", profile = "workshop")
+logindata <- builder$build()
+```
+
+Now we can connect, referring to the login information we have just defined:
+```{r}
+conns <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = "data")
+```
+The 'assign' argument can be set to either 'TRUE' or 'FALSE'. If set to 'TRUE', 
+all the available variables within that table will be added to a serverside 
+data frame. If you only need a small subset of available 
+variables it can be preferable to set this to 'FALSE' and later use the function 
+`datashield.assign` to separately add only the variables you need. 
+
+We can see the serverside object that has been created by running:
+```{r}
+ds.ls()
+```
+
+Here you see one dataframe in each study called 'data' (this name was set using the 
+'symbol' argument in datashield.login above).
+
+We can also view the local workspace by using the normal R command `ls()`:
+```{r}
+ls()
+```
+Do you understand the difference between these two commands?
+
+####################################################################################################
+                                              QUESTIONS?
+####################################################################################################
+
+## Describing data ('aggregate-type functions')
+Aggregate-type functions are the functions you will use to return summaries of your data. 
+There are many data exploration functions already implemented into DataSHIELD. You can view what
+is available in the wiki:
+https://data2knowledge.atlassian.net/wiki/spaces/DSDEV/pages/1184825438/List+of+all+DataSHIELD+functions+v6.1
+A number of additional functions have also been implemented in the packages `dsTidyverseClient` and
+`dsHelper`.
+
+### Describing data using base DataSHIELD
+Two important functions allow you to view the dimensions of the data:
+```{r}
+ds.dim(x = "data")
+```
+The first number gives the number of rows in the data, the second gives the number of columns. 
+So for example, Groningen has 2163 rows and 11 columns.
+
+We can also view the column names of a data frame:
+```{r}
+ds.colnames(x = "data")
+```
+All datasets have the same columns, because in this example we have harmonised data.
+
+What do you think will happen if you try to run this command:
+```{r}
+ds.head("data")
+```
+
+We can also return summary information about variables within that data frame. Let's focus on 
+HDL Cholesterol:
+
+```{r}
+ds.class(x='data$LAB_HDL')
+```
+We see that it is a numeric variable ...
+
+```{r}
+ds.length(x='data$LAB_HDL')
+```
+The length e.g. in Groningen is 2163 (number of rows)
+
+```{r}
+ds.mean(x='data$LAB_HDL')
+```
+And the mean value for Groningen is 1.569
+
+A important fact to note in DataSHIELD is that these results can be assigned to an object
+within a local R session. This is because such results do not disclose individual level data. By
+saving these results to local R objects we can reuse them (e.g. to make tables and graphs for 
+publications)
+
+```{r}
+var_summary <- ds.var(x = "data$LAB_HDL", type = "split")
+var_summary
+```
+If you look in your `environment` tab on the top right, you'll see that you've created a new
+object in your local workspace which has saved the variance of this variable. 
+
+
+### Describing data using dsHelper 
+Whilst core DataSHIELD functions return all the information you need, sometimes many lines of 
+code can be required, and the output can be quite messy. Also with core DataSHIELD functions
+you can only summarise one variable at a time. To help with this, the `dsHelper` package 
+allows you to do some common operations in a more streamlined way, and return neater results.
+
+For example, using `dsHelper` you can summarise not one but many different variables within a 
+dataframe:
+```{r}
+neat_stats <- dh.getStats(
+	df = "data",
+  vars = c("LAB_TSC", "LAB_TRIG", "LAB_HDL", "LAB_GLUC_ADJUSTED", 
+           "PM_BMI_CONTINUOUS", "DIS_CVA", "MEDI_LPD", "DIS_DIAB", "DIS_AMI", 
+           "GENDER", "PM_BMI_CATEGORICAL"))
+           
+neat_stats
+```
+
+Here you see this has returned a list of two tibbles separated into continuous 
+and categorical information. For the categorical variables info is returned on 
+ns, percentages and missingness within each category, whilst for continuous 
+variables info is returned on mean, standard deviation, quantiles and also 
+missingness.
+
+####################################################################################################
+                                              QUESTIONS?
+####################################################################################################
+
+## Manipulating data ('assign-type' functions)
+Assign-type functions are ones where a calculation is done on the data stored at 
+the server, and the results of that calculation are stored in a serverside 
+variable. Results are NOT transmitted back to the user as they contain individual-level data or
+could be used to infer individual-level data.
+
+## Manipulating data using base DataSHIELD
+We can do common transformations of variables using base datashield functions. For example we can
+perform a logorithmic conversion of a continuous variable:
+```{r}
+ds.log(x='data$LAB_HDL', newobj='LAB_HDL_log')
+```
+
+We can then compare the mean of the original variable and new variable to check that check that this 
+conversion has worked correctly:
+```{r}
+ds.mean(x="LAB_HDL_log")
+ds.mean(x="data$LAB_HDL")
+```
+
+By standard, all assign-type function create a new variable separate to the original dataframe. If
+you want the new variable to be a column in the original dataframe, you need to join it back in:
+```{r}
+ds.dataFrame(c("data", "LAB_HDL_log", "LAB_HDL_log"), newobj = "data")
+ds.colnames("data")
+```
+
+## Subsetting data
+In base DataSHIELD there is one function that allows sub-setting of data (`ds.dataFrameSubset`). 
+The main function is to remove rows based on a condition. For example, you might want to create
+separate data frames for males and females:
+
+```{r}
+ds.dataFrameSubset(
+  df.name = "data", 
+  V1.name = "data$GENDER", 
+  V2.name = "0", 
+  Boolean.operator = "==", 
+  newobj = "CNSIM_males")
+
+ds.dataFrameSubset(
+  df.name = "data", 
+  V1.name = "data$GENDER", 
+  V2.name = "1", 
+  Boolean.operator = "==", 
+  newobj = "CNSIM_females")
+```
+We have now created two additional server-side objects which have split `data` by participant sex:
+`CNSIM_males" and "CNSIM_females". We can check this by looking at the dimensions of the new
+data frames:
+
+```{r}
+ds.dim("CNSIM_males")
+ds.dim("CNSIM_females")
+```
+
+## Data manipulation using `dsTidyverseClient`
+Many standard data manipulation operations are not available in base R. However, the 
+`dsTidyVerseClient` package now implements many function from the R `TidyVerse` collection of 
+packages to make our lives easier.
+
+### Removing columns from a data frame
+```{r}
+ds.select(
+  df.name = "data", 
+  tidy_select = list(contains("LAB")), 
+  newobj = "cols_removed"
+)
+
+ds.colnames("cols_removed")
+```
+
+### Removing rows from a data frame using complex conditions
+```{r}
+ds.filter(
+  df.name = "data", 
+  expr = list(GENDER == 1 & PM_BMI_CATEGORICAL == 3), 
+  newobj = "filtered"
+)
+
+ds.dim("filtered")
+```
+
+### Renaming variables
+```{r}
+ds.rename(
+  df.name = "data", 
+  tidy_select = list(sex = GENDER, bmi = PM_BMI_CATEGORICAL), 
+  newobj = "cols_renamed"
+)
+
+ds.colnames("cols_renamed")
+```
+
+####################################################################################################
+                                              QUESTIONS?
+####################################################################################################
+
+## Making graphs
+Visualising the data we are studying is extremely important to get a sense of it. 
+While it may seem disclosive at first glance, only such graphs that are 
+definitively non-disclosive have been implemented within the DataSHIELD project.
+
+### Histograms
+Firstly, histograms give a good sense of how one variable is distributed. But 
+no individual points are disclosed because values are "binned" into groups of a 
+similar magnitude, disguising what each one actually is. We protect privacy by 
+removing bins with low counts (below specific threshold). If you have a 
+symmetric distribution, you may find some things aren't observed at the extreme ends.
+
+Let's create a histogram of the variable we've been investigating for much of 
+this study: HDL Cholesterol ("LAB_HDL").
+
+```{r}
+ds.histogram(x='data$LAB_HDL')
+```
+
+### Scatterplots of two numerical variables
+DataSHIELD generates anonymised scatter plots using two methods: 
+
+- By adding a small amount of randomised noise to the scatter plot. 
+- By taking the average of the k nearest neighbours. 
+
+(for more details on how 
+anonymisation methods are used for the generation of privacy-preserving 
+visualisations you can have a look on the paper 
+https://epjdatascience.springeropen.com/articles/10.1140/epjds/s13688-020-00257-4)
+
+```{r}
+ds.scatterPlot(x = "data$LAB_HDL", y = "data$PM_BMI_CONTINUOUS")
+```
+
+Other DataSHIELD graphical functions allow the creation of box plots, 
+heatmap plots and contour plots. Investigate them using their help functions:
+```{r}
+?ds.heatmapPlot
+?ds.contourPlot
+?ds.boxPlot
+```
+
+####################################################################################################
+                                              QUESTIONS?
+####################################################################################################
+
+## Performing regression analysis
+An example research question is to understand whether BMI is associated with HDL cholestrol. To do
+this we can use a linear regression model. Within DataSHIELD there are two ways to do this: 
+(i) one-stage 'pooled' analysis or (ii) two-stage meta-analysis approach.
+
+### One-stage pooled analysis
+This approach is mathematically equivalent to placing the individual-level data from all sources in 
+one data frame and conducting a regression analysis. The link-function is defined by the 'family'
+argument, so for linear regression use 'gaussian', for logistic regression 'binomial' and so on.
+ 
+```{r}
+one_stage_out <- ds.glm(formula = "data$LAB_HDL ~ data$PM_BMI_CONTINUOUS", family = "gaussian")
+```
+
+We can then look at the coefficients from the model:
+```{r}
+one_stage_out$coefficients
+```
+
+This shows that higher levels of HCL are associated with lower levels of BMI.
+
+### Two-stage meta-analysis
+With the two-stage approach, a regression model is fit separately within each cohort, and estimates
+are combined using meta-analysis and returned to the researcher.
+
+```{r}
+two_stage_out <- ds.glmSLMA(
+  formula = "data$LAB_HDL ~ data$PM_BMI_CONTINUOUS", 
+  family = "gaussian", 
+  newobj = "workshop.obj")
+```
+
+Again, we can view the coefficients from the model for each study and combined. This returns
+the coefficients for each study:
+```{r}
+two_stage_out$betamatrix.valid
+```
+
+And this returns the meta-analysed coefficient:
+```{r}
+two_stage_out$SLMA.pooled.ests.matrix
+```
+
+For the SLMA approach we can also assign the predicted values at each study:
+```{r}
+ds.glmPredict(glmname = "workshop.obj", newobj = "workshop.prediction.obj")
+```
+
+```{r}
+ds.cbind(c('data$LAB_HDL', 'data$PM_BMI_CONTINUOUS'), newobj='vars')
+ds.completeCases('vars', newobj='vars.complete')
+```
+
+We can then use these predicted values to calculate residuals and plot these for diagnostic purposes:
+```{r}
+glmslma <- ds.glmSLMA(
+  formula = "vars.complete$LAB_HDL ~ vars.complete$PM_BMI_CONTINUOUS", 
+  family = "gaussian", 
+  newobj = "workshop.obj")
+
+ds.make(
+  toAssign = paste0(
+    "(", glmslma$SLMA.pooled.ests.matrix[1,1],")+(",
+    glmslma$SLMA.pooled.ests.matrix[2,1], "*vars.complete$PM_BMI_CONTINUOUS)"), 
+  newobj = "predicted.values")
+
+ds.make(
+  toAssign = "vars.complete$LAB_HDL - predicted.values", 
+  newobj = "residuals")
+
+# and you can use those to run regression plot diagnostics  
+ds.scatterPlot('predicted.values', "residuals")
+```
+
+### Plotting our findings
+```{r}
+ds.forestplot(
+  mod = two_stage_out, 
+  variable = "data$PM_BMI_CONTINUOUS"
+)
+```
+
+If you want to have greater control over the format of your forest plots, you can extract the 
+coefficients from `two_stage_out` and create your own plots however you would normally using 
+base R.
+
+####################################################################################################
+                                              QUESTIONS?
+####################################################################################################
+
+## Saving and loading workspaces
+
+You can save your serverside workspace. This saves all the objects you created using assign-type
+functions, ie those showed with `ds.ls()`
+```{r}
+datashield.workspace_save(conns = conns, ws = "workspace2024")
+```
+
+You can save your client-side workspace. This contains all the summary statistics you saved locally,
+and which you can view using `ls()`
+```{r}
+save.image()
+```
+
+Finally, you can log out of your DataSHIELD session:
+```{r}
+# datashield.logout(conns)
+```
+
+To restore your workspace, the next time you want to continue with your analysis
+```{r}
+# conns <- datashield.login(logins = logindata, restore = , symbol = "workspace2024")
+# ds.ls()
+```
+
+####################################################################################################
+                                              QUESTIONS?
+####################################################################################################
+####################################################################################################
+                                              BREAK
+####################################################################################################
+
+## Practical
+To put this into practice, we would like you to write your own code to answer a simple research
+question:
+
+- Is higher blood glucose levels associated with higher BMI?
+
+You will use the same data set (`data`)
+The variable describing blood glucose levels is `LAB_GLUC_ADJUSTED`
+The variable describing BMI is the same as previously `PM_BMI_CONTINUOUS`
+
+To do so, please complete the following steps:
+
+1. Calculate the mean values for BMI and blood glucose levels
+2. Make a scatter plot for the same two variables
+3. Run a two-stage meta-analysis to see if these variables are associated 
+(hint: formula = "data$PM_BMI_CONTINUOUS ~ data$LAB_GLUC_ADJUSTED")
+4. What are the coefficients for `LAB_GLUC_ADJUSTED` for each cohort?
+5. Plot the findings from your meta-analysis in a forest plot. 
+
+Bonus tasks if finished:
+6. Make a scatter plot showing the residuals of your model
+7. Make a forest plot using a different theme
+
+## Calculate the mean values for BMI and blood glucose levels
+
+Using base DataSHIELD:
+```{r}
+
+```
+
+Or using dsHelper:
+```{r}
+
+```
+
+## Make a scatter plot for the same two variables
+```{r}
+
+```
+
+## Run a two-stage meta-analysis to see if these variables are associated
+```{r}
+
+```
+
+What are the coefficients for `LAB_GLUC_ADJUSTED` for each cohort?
+```{r}
+
+```
+
+## Plot the findings from your meta-analysis in a forest plot.
+```{r}
+
+```
+
+## Bonus 1: Make a scatter plot showing the residuals of your model
+
+```{r}
+
+```
+## Bonus 2: Make a forest plot using a different theme (hint: ?meta::meta)
+```{r}
+
+```
+
